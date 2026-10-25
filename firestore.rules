@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.role == 'admin' || request.auth.token.admin == true);
+    }
+    
+    // PrivateAccount: Strictly private to author or admin. Never read by other users or Gemini.
+    match /privateAccounts/{uid} {
+      allow read, update: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid);
+      allow delete: if false; // Soft-delete only via server
+    }
+    
+    // Cohorts: Read-only for authenticated participants in active window. Admin can manage.
+    match /cohorts/{cohortId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Booklet drafts: Author and Admin only.
+    match /bookletDrafts/{uid} {
+      allow read, write: if isOwner(uid) || isAdmin();
+    }
+    
+    // PublishedBooklets: Read-only for authenticated cohort members. Writes must go through server review.
+    match /publishedBooklets/{bookId} {
+      allow read: if isAuthenticated() && resource.data.status == 'PUBLISHED';
+      allow write: if isAdmin();
+    }
+    
+    // AIUsage & AIAnswers: Server-only collections. Client direct reads/writes denied to prevent bypassing 3-question quota.
+    match /aiUsage/{docId} {
+      allow read, write: if false;
+    }
+    match /aiAnswers/{docId} {
+      allow read: if isAuthenticated() && resource.data.viewerUid == request.auth.uid;
+      allow write: if false; // Server writes via Admin SDK
+    }
+    
+    // MeetingProposals & MemberDecisions: Parties to proposal and Admin only.
+    match /proposals/{proposalId} {
+      allow read: if isAuthenticated() && (request.auth.uid in resource.data.memberUids || isAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.proposerUid;
+      allow update: if isAuthenticated() && (request.auth.uid in resource.data.memberUids || isAdmin());
+      allow delete: if false;
+    }
+    
+    // MeetingPlans: Enforces release timing and confirmed member boundary.
+    match /meetingPlans/{proposalId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        (request.auth.uid in resource.data.memberUids && 
+         resource.data.state == 'CONFIRMED' && 
+         request.time >= resource.data.releaseAt)
+      );
+      allow write: if isAdmin();
+    }
+    
+    // NotificationOutbox: Server-side dispatch only. Client can read own in-app notifications.
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated() && resource.data.recipientUid == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.recipientUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow write: if isAdmin();
+    }
+    
+    // Feedback: Submitter can write; cannot read other users' feedback.
+    match /feedbacks/{feedbackId} {
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.authorUid;
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.authorUid || isAdmin());
+      allow update, delete: if false;
+    }
+  }
+}

@@ -1,11 +1,132 @@
-<div align="center">
+# 사이의 책 (Book of Between) - 가치관 책자 기반 블라인드 만남 웹앱
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+> **"얼굴 사진과 스펙 대신, 정성껏 엮은 가치관 책자를 읽고 만납니다."**
 
-  <h1>Built with AI Studio</h2>
+'사이의 책'은 사용자가 활동 지역, 나이대, 성별 및 6가지 핵심 가치관 문항에 답하여 디지털 책자를 발행하고, 상대방의 책자를 열람한 뒤 책자 공개 내용만 아는 AI에게 최대 3회 질문한 뒤 만남을 제안·확정하는 블라인드 만남 웹 애플리케이션입니다.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+---
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## 1. 핵심 철학 및 정보 보호 원칙
 
-</div>
+1. **외모·스펙 배제**: 정확한 주소, 생년월일, 직장명, 학교명, 사진, 실명을 프로필에 요구하지 않으며 공개하지 않습니다.
+2. **AI 점수화 금지**: AI가 사람의 매력이나 궁합을 점수화하지 않습니다. 만남을 선택하고 결정하는 주체는 전적으로 사용자입니다.
+3. **엄격한 근거 기반 AI**: AI는 작성자가 승인·공개한 책자 본문(`BOOK_CONTEXT`)에만 근거하여 답변하며, 직업 추정이나 사칭을 엄격히 거부합니다.
+4. **단계별 정보 공개**: 정확한 집결 장소와 서로를 알아볼 소품 정보는 전원이 참여 의사와 일정을 확정한 뒤(`CONFIRMED`), 정해진 공개 시각(`releaseAt`) 이후에만 열립니다.
+
+---
+
+## 2. 기술 스택 및 아키텍처
+
+- **프런트엔드**: React 19 + TypeScript, Vite, Tailwind CSS v4, Lucide Icons, Motion
+- **백엔드**: Node.js + Express + TypeScript (`server.ts`)
+- **AI 엔진**: Google Gemini API (`@google/genai` 공식 TypeScript SDK, 기본 모델: `gemini-3.8-flash`)
+- **디자인 시스템**: 박물관·모노그래프 에디토리얼 스타일 (따뜻한 크림/석회암 배경 `#F8F6F0`, 엔티크 잉크 본문 `#1C1917`, 버건디 `#881337` / 딥 포레스트 포인트, 16px+ 본문, 모바일 세로 읽기/책장 넘기기 모드 지원)
+- **보안 및 저장소**: Firestore Rules (`firestore.rules`), DEMO 인메모리/로컬 동기화 및 PILOT 확장 구조
+
+---
+
+## 3. 실행 방법
+
+### 로컬 환경 및 AI Studio 실행
+
+```bash
+# 의존성 설치
+npm install
+
+# 개발 서버 실행 (Express 백엔드 + Vite 미들웨어, 포트 3000)
+npm run dev
+
+# 빌드 및 프로덕션 실행
+npm run build
+npm start
+```
+
+브라우저에서 `http://localhost:3000` 접속 시 동작합니다.
+
+### 환경 변수 설정 (`.env`)
+
+```env
+# Google Gemini API Key (AI Studio Secrets 패널에 자동 주입)
+GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+
+# 사용할 Gemini 모델 (기본값: gemini-3.8-flash)
+GEMINI_MODEL="gemini-3.8-flash"
+
+# 서버 포트 (기본 3000)
+PORT=3000
+```
+
+---
+
+## 4. DEMO 모드와 실제 파일럿(PILOT) 구분
+
+| 구분 | DEMO 모드 (현재 기본 활성화) | PILOT 모드 (실제 운영 시) |
+|---|---|---|
+| **가상 페르소나** | 가상 인물 6권 수록 (느린오후, 골목탐험, 새벽산책, 활자중독, 바람정원, 달빛서랍) | 실제 회차 승인 사용자 책자만 서가 노출 |
+| **역할 전환** | 상단 배너에서 1클릭으로 참가자 A, B, C, 운영자 전환 가능 | 실제 Firebase Auth 로그인 계정 고정 |
+| **AI 질문** | `GEMINI_API_KEY` 연결 시 실제 Gemini 3.8 Flash 실시간 분석, 미설정 시에도 정직한 `[예시 응답]` 뱃지와 함께 원문 기반 안내 제공 | Gemini 정식 프로덕션 연결 필수 |
+| **데이터 리셋** | 상단 배너의 '초기화' 버튼으로 기본 가상 데이터 복구 | 영속 Firestore 데이터 보존 및 감사 로그 기록 |
+
+---
+
+## 5. 만남 상태 머신 (State Transitions)
+
+```text
+PROPOSED (제안 도착, 48시간 응답 기한)
+  │
+  ├─► DECLINED (정중한 거절)
+  ├─► WITHDRAWN (발신자 철회)
+  ├─► EXPIRED (48시간 초과)
+  │
+  ▼
+INTEREST_ACCEPTED (참여 의사 상호 동의 완료)
+  │
+  ▼
+PLAN_PROPOSED (운영자가 일시, 권역, 동선 제안)
+  │
+  ▼
+CONFIRMED (전원 동일 planVersion 동의 완료)
+  │ (공개 시각 releaseAt 이후 상세 장소, 소품, 암호 문구 노출)
+  ▼
+COMPLETED (만남 실행 및 후기 작성)
+```
+
+- **1:1 만남 (`DATE_1_1`)**: 두 사람이 상호 책자를 읽고 제안·수락
+- **2:2 만남 (`DATE_2_2`)**: 4인 연애 목적 모임으로, 4명 전원의 책자 열람 및 일정 동의 필요
+- **4인 친목 (`SOCIAL_4`)**: 성별과 무관한 가치관 기반 4인 소모임
+
+---
+
+## 6. AI 시스템 프롬프트 및 응답 스키마 위치
+
+- **시스템 프롬프트 & 검증**: `/server.ts` 및 `/src/services/aiValidation.ts`
+- **응답 스키마**:
+  ```json
+  {
+    "status": "SUPPORTED | NOT_IN_BOOK | PRIVATE_OR_UNSAFE",
+    "answer": "사용자에게 보여줄 정중한 2~4문장 한국어 답변",
+    "evidence": [
+      {
+        "questionId": "Q1",
+        "quote": "BOOK_CONTEXT 원문에 그대로 존재하는 짧은 구절"
+      }
+    ]
+  }
+  ```
+- **서버 검증 로직**: `validateAndSanitizeAIOutput` 함수에서 모델이 반환한 `evidence.quote`가 실제 해당 문항 답변에 포함되어 있는지 문자열 검증을 거치며, 근거가 불일치할 경우 즉시 `NOT_IN_BOOK`으로 강제 격하시킵니다.
+- **3회 쿼터 제한**: `(viewerUid, authorUid, cohortId)` 키를 기준으로 서버에서 엄격히 카운팅되며, 동일 `idempotencyKey` 재시도는 중복 차감하지 않습니다.
+
+---
+
+## 7. 수용 기준 점검표
+
+- [x] **가상 책자 A, B 원문 및 의미 충실 반영**: '느린오후', '골목탐험' 필수 답변 100% 수록
+- [x] **추가 가상 인물 4인 수록**: 총 6인의 개성 있는 책자로 탐색 및 그룹 매칭 가능
+- [x] **6+2 콘텐츠 템플릿**: 필수 6문항(40~180자), 선택 2문항(0~180자), 실시간 글자수 카운트
+- [x] **에디토리얼 북 디자인**: 따뜻한 크림/석회암 배경, 제로 필(Zero-Pill) 규칙, 모바일/데스크톱 최적화
+- [x] **AI 질문 3회 한도 및 원문 근거 표기**: 원문 인용 접기/펼치기, 미설정 시 정직한 예시 뱃지
+- [x] **상태 머신 및 다자간 동의**: 1:1 및 4인 모드에서 전원 동의 확인 후 확정
+- [x] **우리의 만남 카드 보안 경계**: 확정 전 상세 장소 및 소품 은닉, 확정 후 공개
+- [x] **후기 및 연락처 상호 교환 동의**: 양측 동의 시에만 교환 가능하도록 분리
+- [x] **운영자 콘솔**: 책자 검수, 만남 계획 큐레이션, 소품 배정, 통계 집계
+- [x] **Firestore 보안 규칙**: `firestore.rules` 완비

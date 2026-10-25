@@ -1,0 +1,6 @@
+{
+  "name": "사람책 - 사람을 읽는 책장",
+  "description": "정형 가치관 질문에 답하여 나만의 소개 책자를 엮고, 서울숲에서 진행하는 4:4 산책 로테이션",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
